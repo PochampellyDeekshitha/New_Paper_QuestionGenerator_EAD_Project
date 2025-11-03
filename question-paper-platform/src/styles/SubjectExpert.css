@@ -1,0 +1,30 @@
+.subject-expert-container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.bulk-form textarea {
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  margin-bottom: 20px;
+}
+
+.btn-secondary:hover {
+  background-color: #545b62;
+}

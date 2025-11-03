@@ -1,0 +1,75 @@
+.dashboard-container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.navbar {
+  background: white;
+  padding: 15px 30px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-brand {
+  font-size: 24px;
+  font-weight: bold;
+  color: #007bff;
+}
+
+.nav-items {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.dashboard-content {
+  padding: 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.welcome-card {
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.welcome-card h1 {
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.welcome-card p {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 18px;
+}
+
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  background: white;
+  padding: 25px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.stat-card h3 {
+  color: #007bff;
+  margin-bottom: 15px;
+}
+
+.stat-card p {
+  color: #666;
+  line-height: 1.5;
+}

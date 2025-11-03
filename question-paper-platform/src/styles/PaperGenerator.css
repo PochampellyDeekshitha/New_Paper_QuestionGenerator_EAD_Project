@@ -1,0 +1,253 @@
+/* Additional styles for the improved interface */
+.distribution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.auto-fill-btn {
+  font-size: 0.9em;
+  padding: 8px 15px;
+}
+
+.search-results-info {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #e7f3ff;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+}
+
+.success-message {
+  color: #155724;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.available-combinations {
+  margin-top: 15px;
+}
+
+.available-combinations h4 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+.combinations-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.combination-tag {
+  background-color: #28a745;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.no-distribution {
+  text-align: center;
+  padding: 30px;
+  background-color: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  color: #6c757d;
+}
+
+.btn-outline {
+  background-color: transparent;
+  border: 2px solid #007bff;
+  color: #007bff;
+}
+
+.btn-outline:hover {
+  background-color: #007bff;
+  color: white;
+}
+
+.generation-results {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.distribution-result {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.distribution-result:last-child {
+  border-bottom: none;
+}
+
+.distribution-result.match .result {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.distribution-result.no-match .result {
+  color: #dc3545;
+  font-weight: bold;
+}
+
+.criteria {
+  font-weight: 500;
+}
+
+.error-message {
+  color: #dc3545;
+  background-color: #f8d7da;
+  padding: 10px;
+  border-radius: 5px;
+  border-left: 4px solid #dc3545;
+}
+
+.no-questions {
+  text-align: center;
+  padding: 30px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 8px;
+  color: #856404;
+}
+
+.no-questions h4 {
+  margin-bottom: 15px;
+}
+
+.no-questions ul {
+  text-align: left;
+  max-width: 400px;
+  margin: 15px auto;
+}
+
+.no-questions li {
+  margin-bottom: 8px;
+}
+
+.table-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+}
+
+.table {
+  margin: 0;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background-color: #007bff;
+  color: white;
+}
+
+.question-text {
+  max-width: 300px;
+  word-wrap: break-word;
+}
+.distribution-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.quick-setup-btn, .auto-fill-btn {
+  font-size: 0.85em;
+  padding: 8px 12px;
+}
+
+.distribution-tips {
+  margin: 15px 0;
+  padding: 15px;
+  background-color: #e7f3ff;
+  border-radius: 8px;
+  border-left: 4px solid #17a2b8;
+}
+
+.distribution-tips h4 {
+  margin-bottom: 10px;
+  color: #17a2b8;
+}
+
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.tip-item {
+  padding: 8px 12px;
+  background-color: white;
+  border-radius: 5px;
+  border: 1px solid #b8daff;
+  font-size: 0.9em;
+}
+
+.setup-suggestions {
+  margin-top: 15px;
+  text-align: left;
+}
+
+.setup-suggestions ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.setup-suggestions li {
+  margin-bottom: 5px;
+  color: #495057;
+}
+
+.generation-details {
+  background-color: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.match-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  margin-left: 8px;
+  font-weight: bold;
+}
+
+.match-exact {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.match-flexible {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeaa7;
+}
+
+.flexible-match-info {
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+  padding: 10px;
+  border-radius: 5px;
+  margin: 10px 0;
+  font-size: 0.9em;
+  color: #856404;
+}
+
+.generation-details h4 {
+  margin-bottom: 15px;
+  color: #333;
+  border-bottom: 2px solid #007bff;
+  padding-bottom: 8px;
+}
