@@ -3,33 +3,45 @@ const mongoose = require('mongoose');
 const questionSchema = new mongoose.Schema({
   questionText: {
     type: String,
-    required: true
+    required: [true, 'Question text is required']
   },
   unit: {
     type: Number,
-    required: true
+    required: [true, 'Unit is required'],
+    min: [1, 'Unit must be at least 1'],
+    max: [6, 'Unit cannot exceed 6']
   },
   co: {
     type: String,
-    required: true
+    required: [true, 'CO is required']
   },
   bl: {
     type: Number,
-    required: true,
-    min: 1,
-    max: 6
+    required: [true, 'BL is required'],
+    min: [1, 'BL must be at least 1'],
+    max: [6, 'BL cannot exceed 6']
   },
   marks: {
     type: Number,
-    required: true
+    required: [true, 'Marks are required'],
+    min: [1, 'Marks must be at least 1'],
+    max: [20, 'Marks cannot exceed 20']
   },
   subject: {
     type: String,
-    required: true
+    required: [true, 'Subject is required']
   },
-  class: {
+  department: {
     type: String,
-    required: true
+    required: [true, 'Department is required']
+  },
+  course: {
+    type: String,
+    default: ''
+  },
+  semester: {
+    type: String,
+    default: ''
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,

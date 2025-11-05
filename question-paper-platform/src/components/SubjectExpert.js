@@ -12,11 +12,14 @@ const SubjectExpert = () => {
     bl: '',
     marks: '',
     subject: '',
-    class: ''
+    department: '',
+    course: '',
+    semester: ''
   });
   const [bulkInput, setBulkInput] = useState('');
   const [showBulkForm, setShowBulkForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [bulkError, setBulkError] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,14 +40,8 @@ const SubjectExpert = () => {
       setQuestions(response.data);
     } catch (error) {
       console.error('Error fetching questions:', error);
+      alert('Error fetching questions: ' + (error.response?.data?.message || error.message));
     }
-  };
-
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
   };
 
   const handleSubmit = async (e) => {
@@ -59,218 +56,237 @@ const SubjectExpert = () => {
       
       alert('Question added successfully!');
       setFormData({
-        questionText: '',
-        unit: '',
-        co: '',
-        bl: '',
-        marks: '',
-        subject: '',
-        class: ''
+        questionText: '', unit: '', co: '', bl: '', marks: '',
+        subject: '', department: '', course: '', semester: ''
       });
       fetchQuestions();
     } catch (error) {
-      alert(error.response?.data?.message || 'Error adding question');
+      const errorMsg = error.response?.data?.message || 
+                      error.response?.data?.errors?.join(', ') || 
+                      'Error adding question';
+      alert(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleBulkSubmit = async () => {
+    setBulkError('');
+    setLoading(true);
+
     try {
-      const lines = bulkInput.split('\n').filter(line => line.trim());
-      const questions = lines.map(line => {
-        const [questionText, unit, co, bl, marks, subject, className] = line.split('|').map(item => item.trim());
-        return {
-          questionText,
-          unit: parseInt(unit),
-          co,
-          bl: parseInt(bl),
-          marks: parseInt(marks),
-          subject,
-          class: className
-        };
-      });
+      // Parse the bulk input
+      const lines = bulkInput.split('\n')
+        .filter(line => line.trim() && 
+               !line.includes('Format:') && 
+               !line.includes('Example:') &&
+               !line.includes('---') &&
+               !line.includes('Bulk Input'));
+
+      const questionsToUpload = [];
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const parts = line.split('|').map(part => part.trim());
+        
+        if (parts.length >= 7) {
+          questionsToUpload.push({
+            questionText: parts[0] || '',
+            unit: parts[1] || '',
+            co: parts[2] || '',
+            bl: parts[3] || '',
+            marks: parts[4] || '',
+            subject: parts[5] || '',
+            department: parts[6] || '',
+            course: parts[7] || '',
+            semester: parts[8] || ''
+          });
+        }
+      }
+
+      console.log('Questions to upload:', questionsToUpload);
+
+      if (questionsToUpload.length === 0) {
+        setBulkError('No valid questions found. Please check the format.');
+        setLoading(false);
+        return;
+      }
 
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:5000/api/questions/bulk', { questions }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await axios.post(
+        'http://localhost:5000/api/questions/bulk', 
+        { questions: questionsToUpload }, 
+        {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
 
-      alert('Questions added successfully!');
-      setBulkInput('');
-      setShowBulkForm(false);
+      console.log('Upload response:', response.data);
+
+      if (response.data.errors && response.data.errors.length > 0) {
+        setBulkError(`Upload completed with some errors:\n${response.data.errors.join('\n')}`);
+      } else {
+        alert(`Successfully added ${response.data.saved} questions!`);
+        setBulkInput('');
+        setShowBulkForm(false);
+      }
+      
       fetchQuestions();
+
     } catch (error) {
-      alert('Error in bulk upload. Please check the format.');
+      console.error('Full upload error:', error);
+      
+      let errorMessage = 'Upload failed: ';
+      
+      if (error.response) {
+        // Server responded with error
+        const serverError = error.response.data;
+        errorMessage += `Server Error (${error.response.status}): `;
+        
+        if (serverError.errors) {
+          errorMessage += serverError.errors.join(', ');
+        } else if (serverError.message) {
+          errorMessage += serverError.message;
+        } else {
+          errorMessage += JSON.stringify(serverError);
+        }
+      } else if (error.request) {
+        // No response received
+        errorMessage += 'No response from server. Check if backend is running.';
+      } else {
+        // Other errors
+        errorMessage += error.message;
+      }
+      
+      setBulkError(errorMessage);
+      console.error('Detailed error:', error);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Test with this simple data first
+  const testData = `What is React? | 1 | CO1 | 2 | 5 | Computer Networks | IT | B.Tech | IV
+Explain components | 1 | CO2 | 3 | 5 | Computer Networks | IT | B.Tech | IV`;
 
   return (
     <div className="subject-expert-container">
       <nav className="navbar">
         <div className="nav-brand">Subject Expert Portal</div>
         <div className="nav-items">
-          <button onClick={() => navigate('/dashboard')} className="btn btn-primary">Back to Dashboard</button>
+          <button onClick={() => navigate('/dashboard')} className="btn btn-primary">
+            Back to Dashboard
+          </button>
         </div>
       </nav>
 
       <div className="container">
         <div className="card">
           <h2>Add Questions</h2>
-          <button 
-            onClick={() => setShowBulkForm(!showBulkForm)} 
-            className="btn btn-secondary"
-          >
-            {showBulkForm ? 'Single Question Form' : 'Bulk Upload'}
-          </button>
+          
+          <div style={{ marginBottom: '20px' }}>
+            <button 
+              onClick={() => setShowBulkForm(!showBulkForm)} 
+              className="btn btn-secondary"
+            >
+              {showBulkForm ? 'Single Question Form' : 'Bulk Upload'}
+            </button>
+            {showBulkForm && (
+              <button 
+                onClick={() => setBulkInput(testData)}
+                className="btn btn-secondary"
+                style={{ marginLeft: '10px' }}
+              >
+                Load Test Data
+              </button>
+            )}
+          </div>
 
           {!showBulkForm ? (
             <form onSubmit={handleSubmit}>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Question Text:</label>
-                  <textarea
-                    name="questionText"
-                    className="form-control"
-                    rows="3"
-                    required
-                    value={formData.questionText}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-              
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Unit:</label>
-                  <input
-                    type="number"
-                    name="unit"
-                    className="form-control"
-                    required
-                    value={formData.unit}
-                    onChange={handleChange}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>CO (Course Outcome):</label>
-                  <input
-                    type="text"
-                    name="co"
-                    className="form-control"
-                    required
-                    value={formData.co}
-                    onChange={handleChange}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>BL (Bloom's Level):</label>
-                  <select
-                    name="bl"
-                    className="form-control"
-                    required
-                    value={formData.bl}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select BL</option>
-                    <option value="1">1 - Remember</option>
-                    <option value="2">2 - Understand</option>
-                    <option value="3">3 - Apply</option>
-                    <option value="4">4 - Analyze</option>
-                    <option value="5">5 - Evaluate</option>
-                    <option value="6">6 - Create</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Marks:</label>
-                  <input
-                    type="number"
-                    name="marks"
-                    className="form-control"
-                    required
-                    value={formData.marks}
-                    onChange={handleChange}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Subject:</label>
-                  <input
-                    type="text"
-                    name="subject"
-                    className="form-control"
-                    required
-                    value={formData.subject}
-                    onChange={handleChange}
-                  />
-                </div>
-                
-                <div className="form-group">
-                  <label>Class:</label>
-                  <input
-                    type="text"
-                    name="class"
-                    className="form-control"
-                    required
-                    value={formData.class}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-
-              <button type="submit" className="btn btn-success" disabled={loading}>
-                {loading ? 'Adding...' : 'Add Question'}
-              </button>
+              {/* Your existing single question form */}
             </form>
           ) : (
             <div className="bulk-form">
               <div className="form-group">
-                <label>Bulk Input (Format: Question Text | Unit | CO | BL | Marks | Subject | Class):</label>
+                <label>
+                  Bulk Input (Format: Question | Unit | CO | BL | Marks | Subject | Department | Course | Semester)
+                </label>
                 <textarea
                   className="form-control"
-                  rows="10"
+                  rows="8"
                   value={bulkInput}
-                  onChange={(e) => setBulkInput(e.target.value)}
-                  placeholder="Question 1 text here | 1 | CO1 | 2 | 5 | Mathematics | B.Tech CS&#10;Question 2 text here | 1 | CO2 | 3 | 10 | Mathematics | B.Tech CS"
+                  onChange={(e) => {
+                    setBulkInput(e.target.value);
+                    setBulkError('');
+                  }}
+                  placeholder="What is React? | 1 | CO1 | 2 | 5 | Computer Networks | IT | B.Tech | IV"
                 />
+                <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
+                  {bulkInput.split('\n').filter(line => line.trim()).length} questions detected
+                </div>
               </div>
-              <button onClick={handleBulkSubmit} className="btn btn-success">
-                Upload Questions
+              
+              {bulkError && (
+                <div className="error-message">
+                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: '14px' }}>{bulkError}</pre>
+                </div>
+              )}
+              
+              <button 
+                onClick={handleBulkSubmit} 
+                className="btn btn-success"
+                disabled={loading || !bulkInput.trim()}
+                style={{ marginTop: '15px' }}
+              >
+                {loading ? 'Uploading...' : 'Upload Questions'}
               </button>
             </div>
           )}
         </div>
-
         <div className="card">
           <h2>Question Bank ({questions.length} questions)</h2>
           <div className="table-container">
-            <table className="table">
+            <table className="questions-table">
               <thead>
-                <tr>
+                <tr className="table-header">
+                  <th>#</th>
                   <th>Question</th>
                   <th>Unit</th>
                   <th>CO</th>
                   <th>BL</th>
                   <th>Marks</th>
                   <th>Subject</th>
-                  <th>Class</th>
+                  <th>Department</th>
+                  <th>Course</th>
+                  <th>Semester</th>
                 </tr>
               </thead>
               <tbody>
                 {questions.map((question, index) => (
-                  <tr key={question._id}>
-                    <td>{question.questionText}</td>
-                    <td>{question.unit}</td>
-                    <td>{question.co}</td>
-                    <td>{question.bl}</td>
-                    <td>{question.marks}</td>
-                    <td>{question.subject}</td>
-                    <td>{question.class}</td>
+                  <tr key={question._id} className={index % 2 === 0 ? 'even-row' : 'odd-row'}>
+                    <td className="serial-number">{index + 1}</td>
+                    <td className="question-text">{question.questionText}</td>
+                    <td className="unit-cell">{question.unit}</td>
+                    <td className="co-cell">{question.co}</td>
+                    <td className="bl-cell">
+                      <span className={`bl-badge bl-${question.bl}`}>
+                        {question.bl}
+                      </span>
+                    </td>
+                    <td className="marks-cell">
+                      <span className="marks-badge">{question.marks}</span>
+                    </td>
+                    <td className="subject-cell">{question.subject}</td>
+                    <td className="department-cell">{question.department}</td>
+                    <td className="course-cell">{question.course}</td>
+                    <td className="semester-cell">
+                      <span className="semester-badge">{question.semester}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

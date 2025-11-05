@@ -1,18 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import jsPDF from 'jspdf';
 import '../styles/PaperGenerator.css';
 
 const PaperGenerator = () => {
   const [filters, setFilters] = useState({
     subject: '',
-    class: '',
+    department: '',
+    course: '',
     units: [],
     cos: []
   });
   const [paperConfig, setPaperConfig] = useState({
-    paperName: '',
-    totalMarks: 100,
+    paperName: 'Mid-1 Exam',
+    totalMarks: 20,
+    collegeName: 'CHAITANYA BHARATHI INSTITUTE OF TECHNOLOGY (Autonomous)',
+    program: 'B.E',
+    semester: 'V',
+    examinationType: 'Main/Backlog',
+    monthYear: 'April 2025',
+    time: '1 Hour',
+    note: 'Answer ALL questions from Part-A & Part-B (Internal Choice) at one place in the same order',
+    commonTo: 'IT',
     questionDistribution: []
   });
   const [availableQuestions, setAvailableQuestions] = useState([]);
@@ -20,6 +30,7 @@ const PaperGenerator = () => {
   const [loading, setLoading] = useState(false);
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [availableCombinations, setAvailableCombinations] = useState({});
+  const [searchLoading, setSearchLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -45,39 +56,50 @@ const PaperGenerator = () => {
     }));
   };
 
+  // Calculate available combinations from actual questions
+  const calculateCombinations = (questions) => {
+    const combinations = {};
+    
+    questions.forEach(question => {
+      const key = `${question.marks} marks - BL ${question.bl}`;
+      combinations[key] = (combinations[key] || 0) + 1;
+    });
+    
+    return combinations;
+  };
+
+  // Fetch questions from the same API as SubjectExpert
   const searchQuestions = async () => {
-    if (!filters.subject || !filters.class) {
-      alert('Please enter both Subject and Class to search questions');
+    if (!filters.subject || !filters.department) {
+      alert('Please enter both Subject and Department to search questions');
       return;
     }
 
+    setSearchLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const params = new URLSearchParams();
-      
-      if (filters.subject) params.append('subject', filters.subject);
-      if (filters.class) params.append('class', filters.class);
-      if (filters.units.length > 0) params.append('unit', filters.units.join(','));
-
-      const response = await axios.get(`http://localhost:5000/api/questions?${params}`, {
+      const response = await axios.get('http://localhost:5000/api/questions', {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      // Filter questions based on subject and department
+      const filteredQuestions = response.data.filter(question => 
+        question.subject === filters.subject && 
+        question.department === filters.department
+      );
+
+      setAvailableQuestions(filteredQuestions);
       
-      setAvailableQuestions(response.data);
-      
-      // Calculate available combinations for user guidance
-      const combinations = {};
-      response.data.forEach(q => {
-        const key = `${q.marks} marks - BL ${q.bl}`;
-        if (!combinations[key]) combinations[key] = 0;
-        combinations[key]++;
-      });
+      // Calculate available combinations
+      const combinations = calculateCombinations(filteredQuestions);
       setAvailableCombinations(combinations);
       
-      alert(`Found ${response.data.length} questions matching your criteria`);
+      alert(`Found ${filteredQuestions.length} questions matching your criteria`);
     } catch (error) {
       console.error('Error fetching questions:', error);
-      alert('Error searching questions: ' + (error.response?.data?.message || error.message));
+      alert('Error fetching questions: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -85,8 +107,8 @@ const PaperGenerator = () => {
     setPaperConfig(prev => ({
       ...prev,
       questionDistribution: [
-        ...prev.questionDistribution,
-        { marks: '', count: '', bl: '' }
+        ...(prev.questionDistribution || []),
+        { marks: '', count: '', bl: '', section: 'Part-A' }
       ]
     }));
   };
@@ -109,8 +131,14 @@ const PaperGenerator = () => {
   };
 
   const validateDistribution = () => {
+    if (!paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0) {
+      alert('Please add at least one question distribution');
+      return false;
+    }
+
+    let totalConfiguredMarks = 0;
     for (const dist of paperConfig.questionDistribution) {
-      if (!dist.marks || !dist.count || !dist.bl) {
+      if (!dist.marks || !dist.count || !dist.bl || !dist.section) {
         alert('Please fill all fields in question distribution');
         return false;
       }
@@ -118,84 +146,36 @@ const PaperGenerator = () => {
         alert('Marks and count must be positive numbers');
         return false;
       }
+      totalConfiguredMarks += dist.marks * dist.count;
     }
+
+    // Check if configured marks match total marks
+    if (totalConfiguredMarks !== paperConfig.totalMarks) {
+      alert(`Configured marks (${totalConfiguredMarks}) do not match total marks (${paperConfig.totalMarks}). Please adjust your distribution.`);
+      return false;
+    }
+
     return true;
   };
 
-  const autoFillDistribution = () => {
-    if (availableQuestions.length === 0) {
+  const setupQuickDistribution = () => {
+    if (Object.keys(availableCombinations).length === 0) {
       alert('Please search for questions first to see available combinations');
       return;
     }
 
-    // Group questions by marks and create balanced distribution
-    const marksDistribution = {};
-    availableQuestions.forEach(q => {
-      if (!marksDistribution[q.marks]) marksDistribution[q.marks] = [];
-      marksDistribution[q.marks].push(q);
-    });
-
-    // Create distribution that uses all available question types
-    const newDistribution = [];
-    
-    // For each marks category, distribute questions across different BL levels
-    Object.entries(marksDistribution).forEach(([marks, questions]) => {
-      const questionsByBL = {};
-      questions.forEach(q => {
-        if (!questionsByBL[q.bl]) questionsByBL[q.bl] = [];
-        questionsByBL[q.bl].push(q);
-      });
-
-      // For each BL level in this marks category, add to distribution
-      Object.entries(questionsByBL).forEach(([bl, blQuestions]) => {
-        // Use at most 2 questions per BL level to keep it balanced
-        const count = Math.min(blQuestions.length, 2);
-        newDistribution.push({
-          marks: parseInt(marks),
-          count: count,
-          bl: parseInt(bl)
-        });
-      });
-    });
-
-    // If we have multiple question types, limit to a reasonable number
-    const finalDistribution = newDistribution.slice(0, 6); // Max 6 different types
-
-    setPaperConfig(prev => ({
-      ...prev,
-      questionDistribution: finalDistribution
-    }));
-
-    alert(`Auto-filled ${finalDistribution.length} question types based on available questions`);
-  };
-
-  const setupQuickDistribution = () => {
-    if (availableQuestions.length === 0) {
-      alert('Please search for questions first');
-      return;
-    }
-
-    // Simple distribution: use all available marks with 1 question each
-    const marksCount = {};
-    availableQuestions.forEach(q => {
-      marksCount[q.marks] = (marksCount[q.marks] || 0) + 1;
-    });
-
-    const newDistribution = Object.entries(marksCount).map(([marks, totalCount]) => {
-      // For each marks value, use the most common BL level
-      const blCount = {};
-      availableQuestions
-        .filter(q => q.marks == marks)
-        .forEach(q => {
-          blCount[q.bl] = (blCount[q.bl] || 0) + 1;
-        });
-      
-      const mostCommonBL = Object.entries(blCount).sort((a, b) => b[1] - a[1])[0][0];
+    // Create distribution based on available combinations
+    const newDistribution = Object.entries(availableCombinations).map(([combo, count]) => {
+      const [marksStr, blStr] = combo.split(' - BL ');
+      const marks = parseInt(marksStr.split(' ')[0]);
+      const bl = parseInt(blStr);
+      const section = marks <= 5 ? 'Part-A' : 'Part-B';
       
       return {
-        marks: parseInt(marks),
+        marks: marks,
         count: 1, // Start with 1 question per type
-        bl: parseInt(mostCommonBL)
+        bl: bl,
+        section: section
       };
     });
 
@@ -207,9 +187,41 @@ const PaperGenerator = () => {
     alert(`Set up ${newDistribution.length} question types. You can adjust the counts.`);
   };
 
+  const autoFillDistribution = () => {
+    if (Object.keys(availableCombinations).length === 0) {
+      alert('Please search for questions first to see available combinations');
+      return;
+    }
+
+    // Create distribution that uses all available question types with reasonable counts
+    const newDistribution = Object.entries(availableCombinations).map(([combo, availableCount]) => {
+      const [marksStr, blStr] = combo.split(' - BL ');
+      const marks = parseInt(marksStr.split(' ')[0]);
+      const bl = parseInt(blStr);
+      const section = marks <= 5 ? 'Part-A' : 'Part-B';
+      
+      // Use 1-2 questions per type, but not more than available
+      const count = Math.min(2, Math.max(1, Math.floor(availableCount / 2)));
+      
+      return {
+        marks: marks,
+        count: count,
+        bl: bl,
+        section: section
+      };
+    });
+
+    setPaperConfig(prev => ({
+      ...prev,
+      questionDistribution: newDistribution
+    }));
+
+    alert(`Auto-filled ${newDistribution.length} question types based on available questions`);
+  };
+
   const generatePaper = async () => {
-    if (!filters.subject || !filters.class) {
-      alert('Please enter Subject and Class');
+    if (!filters.subject || !filters.department) {
+      alert('Please enter Subject and Department');
       return;
     }
 
@@ -218,7 +230,7 @@ const PaperGenerator = () => {
       return;
     }
 
-    if (paperConfig.questionDistribution.length === 0) {
+    if (!paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0) {
       alert('Please add at least one question distribution');
       return;
     }
@@ -227,54 +239,209 @@ const PaperGenerator = () => {
       return;
     }
 
-    // Validate distribution and convert to numbers
-    const validatedDistribution = paperConfig.questionDistribution.map(dist => {
-      const marks = parseInt(dist.marks);
-      const count = parseInt(dist.count);
-      const bl = parseInt(dist.bl);
-
-      if (isNaN(marks) || isNaN(count) || isNaN(bl)) {
-        throw new Error('All distribution fields must be valid numbers');
-      }
-
-      if (marks <= 0 || count <= 0 || bl < 1 || bl > 6) {
-        throw new Error('Marks and count must be positive numbers, BL must be between 1-6');
-      }
-
-      return { marks, count, bl };
-    });
-
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:5000/api/paper/generate', {
-        paperName: paperConfig.paperName,
-        className: filters.class,
-        subject: filters.subject,
-        questionDistribution: validatedDistribution,
-        units: filters.units,
-        cos: filters.cos
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // Generate paper based on distribution using actual available questions
+      const generatedQuestions = [];
+      let totalMarks = 0;
+      const usedQuestionIds = new Set(); // To avoid duplicate questions
 
-      console.log('Generation response:', response.data);
-      setGeneratedPaper(response.data);
+      for (const dist of paperConfig.questionDistribution) {
+        const { marks, count, bl, section } = dist;
+        
+        // Filter available questions that match the criteria and haven't been used
+        const matchingQuestions = availableQuestions.filter(q => 
+          q.marks === marks && 
+          q.bl === bl &&
+          !usedQuestionIds.has(q._id)
+        ).slice(0, count);
+
+        // If not enough matching questions, show warning but continue
+        if (matchingQuestions.length < count) {
+          console.warn(`Not enough questions for ${marks} marks BL ${bl}. Requested: ${count}, Found: ${matchingQuestions.length}`);
+        }
+
+        matchingQuestions.forEach(question => {
+          generatedQuestions.push({
+            ...question,
+            section: section
+          });
+          usedQuestionIds.add(question._id);
+          totalMarks += question.marks;
+        });
+      }
+
+      const generatedPaperData = {
+        paperName: paperConfig.paperName,
+        subject: filters.subject,
+        department: filters.department,
+        questions: generatedQuestions,
+        totalMarks: totalMarks,
+        message: generatedQuestions.length > 0 
+          ? `Paper generated successfully with ${generatedQuestions.length} questions and ${totalMarks} total marks`
+          : 'No questions were generated. Please check the available question types and adjust your distribution.'
+      };
+
+      setGeneratedPaper(generatedPaperData);
       
-      if (response.data.questions.length === 0) {
-        alert('No questions were generated. The system will now show detailed matching information.');
+      if (generatedQuestions.length === 0) {
+        alert('No questions were generated. Please check the available question types and adjust your distribution.');
       } else {
-        alert(`Paper generated successfully with ${response.data.questions.length} questions and ${response.data.totalMarks} total marks`);
+        alert(`Paper generated successfully with ${generatedQuestions.length} questions and ${totalMarks} total marks`);
       }
     } catch (error) {
       console.error('Error generating paper:', error);
-      if (error.response?.data?.message) {
-        alert('Error generating paper: ' + error.response.data.message);
-      } else {
-        alert('Error generating paper: ' + error.message);
-      }
+      alert('Error generating paper: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const downloadPDF = () => {
+    if (!generatedPaper) {
+      alert('No paper generated to download');
+      return;
+    }
+
+    if (generatedPaper.questions.length === 0) {
+      alert('Cannot download empty paper. Please generate a paper with questions first.');
+      return;
+    }
+
+    setDownloadLoading(true);
+    try {
+      // Create new PDF document
+      const pdf = new jsPDF();
+      
+      // Set initial y position
+      let yPosition = 20;
+      
+      // Add college name (centered)
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(paperConfig.collegeName, 105, yPosition, { align: 'center' });
+      yPosition += 10;
+      
+      // Add program and semester
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Program: ${paperConfig.program}`, 20, yPosition);
+      pdf.text(`Semester: ${paperConfig.semester}`, 150, yPosition);
+      yPosition += 8;
+      
+      // Add examination details
+      pdf.text(`Examination: ${paperConfig.examinationType}`, 20, yPosition);
+      pdf.text(`Month & Year: ${paperConfig.monthYear}`, 150, yPosition);
+      yPosition += 8;
+      
+      // Add time and common to
+      pdf.text(`Time: ${paperConfig.time}`, 20, yPosition);
+      pdf.text(`Common To: ${paperConfig.commonTo}`, 150, yPosition);
+      yPosition += 15;
+      
+      // Add paper name
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(`Paper: ${generatedPaper.paperName}`, 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      // Add subject and department
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Subject: ${generatedPaper.subject}`, 20, yPosition);
+      pdf.text(`Department: ${generatedPaper.department}`, 150, yPosition);
+      yPosition += 8;
+      
+      // Add total marks
+      pdf.text(`Total Marks: ${generatedPaper.totalMarks}`, 20, yPosition);
+      yPosition += 15;
+      
+      // Add note
+      pdf.setFont('helvetica', 'italic');
+      pdf.text(`Note: ${paperConfig.note}`, 20, yPosition);
+      yPosition += 15;
+      
+      // Add Part A heading
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('PART - A', 20, yPosition);
+      yPosition += 10;
+      
+      // Add Part A questions
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'normal');
+      
+      const partAQuestions = generatedPaper.questions.filter(q => q.section === 'Part-A');
+      partAQuestions.forEach((question, index) => {
+        const questionText = `Q${index + 1}. ${question.questionText} [${question.marks} Marks]`;
+        
+        // Split long questions into multiple lines
+        const splitText = pdf.splitTextToSize(questionText, 170);
+        
+        // Check if we need a new page
+        if (yPosition + (splitText.length * 7) > 270) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+        
+        pdf.text(splitText, 20, yPosition);
+        yPosition += (splitText.length * 7) + 3;
+      });
+      
+      // Add Part B heading
+      if (yPosition > 250) {
+        pdf.addPage();
+        yPosition = 20;
+      } else {
+        yPosition += 10;
+      }
+      
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text('PART - B', 20, yPosition);
+      yPosition += 10;
+      
+      // Add Part B questions
+      pdf.setFontSize(11);
+      pdf.setFont('helvetica', 'normal');
+      
+      const partBQuestions = generatedPaper.questions.filter(q => q.section === 'Part-B');
+      partBQuestions.forEach((question, index) => {
+        const questionText = `Q${partAQuestions.length + index + 1}. ${question.questionText} [${question.marks} Marks]`;
+        
+        // Split long questions into multiple lines
+        const splitText = pdf.splitTextToSize(questionText, 170);
+        
+        // Check if we need a new page
+        if (yPosition + (splitText.length * 7) > 270) {
+          pdf.addPage();
+          yPosition = 20;
+        }
+        
+        pdf.text(splitText, 20, yPosition);
+        yPosition += (splitText.length * 7) + 3;
+      });
+      
+      // Add end of paper
+      if (yPosition > 250) {
+        pdf.addPage();
+        yPosition = 20;
+      } else {
+        yPosition += 10;
+      }
+      
+      pdf.setFont('helvetica', 'italic');
+      pdf.text('--- End of Question Paper ---', 105, yPosition, { align: 'center' });
+      
+      // Save the PDF
+      pdf.save(`${generatedPaper.paperName.replace(/\s+/g, '_')}.pdf`);
+      
+      alert('Paper downloaded successfully as PDF');
+    } catch (error) {
+      console.error('PDF download error:', error);
+      alert('Error downloading PDF: ' + (error.message || 'Unknown error'));
+    } finally {
+      setDownloadLoading(false);
     }
   };
 
@@ -291,49 +458,49 @@ const PaperGenerator = () => {
 
     setDownloadLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      const endpoint = format === 'json' ? '/download-json' : '/download-word';
-      
-      const response = await axios.post(`http://localhost:5000/api/paper${endpoint}`, {
-        paperData: generatedPaper
-      }, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        responseType: 'blob'
-      });
-
-      // Create blob and download
-      const blob = new Blob([response.data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      
-      const extension = format === 'json' ? 'json' : 'doc';
-      const filename = `${generatedPaper.paperName}.${extension}`;
-      
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      
-      alert(`Paper downloaded successfully as ${filename}`);
+      if (format === 'json') {
+        // Download as JSON
+        const dataStr = JSON.stringify(generatedPaper, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${generatedPaper.paperName.replace(/\s+/g, '_')}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        alert('Paper downloaded successfully as JSON');
+      } else if (format === 'pdf') {
+        downloadPDF();
+      }
     } catch (error) {
       console.error('Download error:', error);
-      alert('Error downloading paper: ' + (error.response?.data?.message || error.message));
+      alert('Error downloading paper: ' + (error.message || 'Unknown error'));
     } finally {
       setDownloadLoading(false);
     }
   };
 
+  // Auto-fill demo data for quick testing
+  const autoFillDemoData = () => {
+    setFilters({
+      subject: 'Computer Networks',
+      department: 'Information Technology',
+      course: 'B.Tech',
+      units: [],
+      cos: []
+    });
+  };
+
   return (
-    <div className="paper-generator-container">
+    <div className="subject-expert-container">
       <nav className="navbar">
-        <div className="nav-brand">Paper Generator</div>
+        <div className="nav-brand">Question Paper Generator</div>
         <div className="nav-items">
-          <button onClick={() => navigate('/dashboard')} className="btn btn-primary">Back to Dashboard</button>
+          <button onClick={() => navigate('/dashboard')} className="btn btn-primary">
+            Back to Dashboard
+          </button>
         </div>
       </nav>
 
@@ -342,7 +509,80 @@ const PaperGenerator = () => {
           <h2>Generate Question Paper</h2>
           
           <div className="form-section">
-            <h3>Paper Details</h3>
+            <h3>College & Paper Details</h3>
+            <div className="form-row">
+              <div className="form-group">
+                <label>College Name:</label>
+                <input
+                  type="text"
+                  name="collegeName"
+                  className="form-control"
+                  value={paperConfig.collegeName}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Program:</label>
+                <input
+                  type="text"
+                  name="program"
+                  className="form-control"
+                  value={paperConfig.program}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Semester:</label>
+                <input
+                  type="text"
+                  name="semester"
+                  className="form-control"
+                  value={paperConfig.semester}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Examination Type:</label>
+                <select
+                  name="examinationType"
+                  className="form-control"
+                  value={paperConfig.examinationType}
+                  onChange={handlePaperConfigChange}
+                >
+                  <option value="Main/Backlog">Main/Backlog</option>
+                  <option value="Regular">Regular</option>
+                  <option value="Backlog">Backlog</option>
+                  <option value="Supplementary">Supplementary</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Month & Year:</label>
+                <input
+                  type="text"
+                  name="monthYear"
+                  className="form-control"
+                  value={paperConfig.monthYear}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+              <div className="form-group">
+                <label>Common To (Departments):</label>
+                <input
+                  type="text"
+                  name="commonTo"
+                  className="form-control"
+                  value={paperConfig.commonTo}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+            </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label>Paper Name:</label>
@@ -352,7 +592,8 @@ const PaperGenerator = () => {
                   className="form-control"
                   value={paperConfig.paperName}
                   onChange={handlePaperConfigChange}
-                  placeholder="e.g., Final Examination - Semester 1"
+                  placeholder="e.g., Mid-1 Examination"
+                  required
                 />
               </div>
               <div className="form-group">
@@ -364,6 +605,30 @@ const PaperGenerator = () => {
                   value={paperConfig.totalMarks}
                   onChange={handlePaperConfigChange}
                   min="1"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Time Duration:</label>
+                <input
+                  type="text"
+                  name="time"
+                  className="form-control"
+                  value={paperConfig.time}
+                  onChange={handlePaperConfigChange}
+                />
+              </div>
+              <div className="form-group full-width">
+                <label>Instructions/Note:</label>
+                <textarea
+                  name="note"
+                  className="form-control"
+                  rows="2"
+                  value={paperConfig.note}
+                  onChange={handlePaperConfigChange}
                 />
               </div>
             </div>
@@ -380,26 +645,42 @@ const PaperGenerator = () => {
                   className="form-control"
                   value={filters.subject}
                   onChange={handleFilterChange}
-                  placeholder="e.g., Mathematics"
+                  placeholder="e.g., Computer Networks"
                   required
                 />
               </div>
               <div className="form-group">
-                <label>Class:</label>
+                <label>Department:</label>
                 <input
                   type="text"
-                  name="class"
+                  name="department"
                   className="form-control"
-                  value={filters.class}
+                  value={filters.department}
                   onChange={handleFilterChange}
-                  placeholder="e.g., B.Tech CS"
+                  placeholder="e.g., Information Technology"
                   required
                 />
               </div>
+              <div className="form-group">
+                <label>Course:</label>
+                <input
+                  type="text"
+                  name="course"
+                  className="form-control"
+                  value={filters.course}
+                  onChange={handleFilterChange}
+                  placeholder="e.g., B.Tech"
+                />
+              </div>
             </div>
-            <button onClick={searchQuestions} className="btn btn-primary">
-              Search Available Questions
-            </button>
+            <div className="form-buttons">
+              <button onClick={autoFillDemoData} className="btn btn-secondary">
+                Auto-fill Demo Data
+              </button>
+              <button onClick={searchQuestions} className="btn btn-primary" disabled={searchLoading}>
+                {searchLoading ? 'Searching...' : 'Search Available Questions'}
+              </button>
+            </div>
             
             {availableQuestions.length > 0 && (
               <div className="search-results-info">
@@ -426,12 +707,12 @@ const PaperGenerator = () => {
           <div className="form-section">
             <div className="distribution-header">
               <h3>Question Distribution</h3>
-              {availableQuestions.length > 0 && (
+              {Object.keys(availableCombinations).length > 0 && (
                 <div className="distribution-buttons">
-                  <button onClick={setupQuickDistribution} className="btn btn-secondary quick-setup-btn">
+                  <button onClick={setupQuickDistribution} className="btn btn-secondary">
                     Quick Setup
                   </button>
-                  <button onClick={autoFillDistribution} className="btn btn-secondary auto-fill-btn">
+                  <button onClick={autoFillDistribution} className="btn btn-secondary">
                     Auto-Fill All
                   </button>
                 </div>
@@ -442,8 +723,7 @@ const PaperGenerator = () => {
               Use the available question types above as a guide.
             </p>
 
-            {/* Distribution tips based on available questions */}
-            {availableQuestions.length > 0 && (
+            {Object.keys(availableCombinations).length > 0 && (
               <div className="distribution-tips">
                 <h4>💡 Quick Tips:</h4>
                 <div className="tips-grid">
@@ -456,10 +736,10 @@ const PaperGenerator = () => {
               </div>
             )}
             
-            {paperConfig.questionDistribution.length === 0 ? (
+            {!paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0 ? (
               <div className="no-distribution">
                 <p>No distribution configured yet.</p>
-                {availableQuestions.length > 0 ? (
+                {Object.keys(availableCombinations).length > 0 ? (
                   <div className="setup-suggestions">
                     <p>Try one of these:</p>
                     <ul>
@@ -476,6 +756,17 @@ const PaperGenerator = () => {
               paperConfig.questionDistribution.map((dist, index) => (
                 <div key={index} className="distribution-row">
                   <div className="form-group">
+                    <label>Section:</label>
+                    <select
+                      className="form-control"
+                      value={dist.section}
+                      onChange={(e) => updateDistribution(index, 'section', e.target.value)}
+                    >
+                      <option value="Part-A">Part-A</option>
+                      <option value="Part-B">Part-B</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
                     <label>Marks:</label>
                     <input
                       type="number"
@@ -483,6 +774,7 @@ const PaperGenerator = () => {
                       value={dist.marks}
                       onChange={(e) => updateDistribution(index, 'marks', parseInt(e.target.value) || '')}
                       min="1"
+                      max="20"
                       placeholder="e.g., 5"
                     />
                   </div>
@@ -494,7 +786,7 @@ const PaperGenerator = () => {
                       value={dist.count}
                       onChange={(e) => updateDistribution(index, 'count', parseInt(e.target.value) || '')}
                       min="1"
-                      placeholder="e.g., 3"
+                      placeholder="e.g., 2"
                     />
                   </div>
                   <div className="form-group">
@@ -504,7 +796,7 @@ const PaperGenerator = () => {
                       value={dist.bl}
                       onChange={(e) => updateDistribution(index, 'bl', e.target.value)}
                     >
-                      <option value="">Any BL</option>
+                      <option value="">Select BL</option>
                       <option value="1">1 - Remember</option>
                       <option value="2">2 - Understand</option>
                       <option value="3">3 - Apply</option>
@@ -524,8 +816,8 @@ const PaperGenerator = () => {
               ))
             )}
             
-            <button onClick={addDistribution} className="btn btn-outline">
-              + Add Question Type Manually
+            <button onClick={addDistribution} className="btn btn-secondary">
+              + Add Question Type
             </button>
           </div>
 
@@ -533,7 +825,7 @@ const PaperGenerator = () => {
             <button 
               onClick={generatePaper} 
               className="btn btn-success generate-btn"
-              disabled={loading || paperConfig.questionDistribution.length === 0}
+              disabled={loading || !paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0}
             >
               {loading ? 'Generating Paper...' : 'Generate Question Paper'}
             </button>
@@ -542,30 +834,38 @@ const PaperGenerator = () => {
 
         {availableQuestions.length > 0 && (
           <div className="card">
-            <h3>Available Questions ({availableQuestions.length})</h3>
+            <h2>Available Questions ({availableQuestions.length} questions)</h2>
             <div className="table-container">
-              <table className="table">
+              <table className="questions-table">
                 <thead>
-                  <tr>
+                  <tr className="table-header">
+                    <th>#</th>
                     <th>Question</th>
                     <th>Unit</th>
                     <th>CO</th>
                     <th>BL</th>
                     <th>Marks</th>
                     <th>Subject</th>
-                    <th>Class</th>
+                    <th>Department</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {availableQuestions.map((question) => (
-                    <tr key={question._id}>
+                  {availableQuestions.map((question, index) => (
+                    <tr key={question._id} className={index % 2 === 0 ? 'even-row' : 'odd-row'}>
+                      <td className="serial-number">{index + 1}</td>
                       <td className="question-text">{question.questionText}</td>
-                      <td>{question.unit}</td>
-                      <td>{question.co}</td>
-                      <td>{question.bl}</td>
-                      <td><strong>{question.marks}</strong></td>
-                      <td>{question.subject}</td>
-                      <td>{question.class}</td>
+                      <td className="unit-cell">{question.unit}</td>
+                      <td className="co-cell">{question.co}</td>
+                      <td className="bl-cell">
+                        <span className={`bl-badge bl-${question.bl}`}>
+                          {question.bl}
+                        </span>
+                      </td>
+                      <td className="marks-cell">
+                        <span className="marks-badge">{question.marks}</span>
+                      </td>
+                      <td className="subject-cell">{question.subject}</td>
+                      <td className="department-cell">{question.department}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -575,110 +875,65 @@ const PaperGenerator = () => {
         )}
 
         {generatedPaper && (
-          <div className="card generated-paper">
-            <h3>Generated Paper Preview</h3>
+          <div className="card">
+            <h2>Generated Paper Preview</h2>
             
-            <div className="generation-details">
-              <h4>Generation Results:</h4>
+            <div className="paper-preview">
+              <div className="paper-header">
+                <h3>{generatedPaper.paperName}</h3>
+                <p><strong>Subject:</strong> {generatedPaper.subject} | <strong>Department:</strong> {generatedPaper.department} | <strong>Total Marks:</strong> {generatedPaper.totalMarks}</p>
+                {generatedPaper.message && (
+                  <p className={`message ${generatedPaper.questions.length === 0 ? 'error' : 'success'}`}>
+                    {generatedPaper.message}
+                  </p>
+                )}
+              </div>
               
-              {/* Debug Information */}
-              <div className="debug-info">
-                <h5>📊 Debug Information:</h5>
-                <p><strong>Subject:</strong> {filters.subject}</p>
-                <p><strong>Class:</strong> {filters.class}</p>
-                <p><strong>Total Distribution Criteria:</strong> {paperConfig.questionDistribution.length}</p>
-                <p><strong>Available Questions:</strong> {availableQuestions.length}</p>
+              <div className="questions-list">
+                {generatedPaper.questions.length === 0 ? (
+                  <div className="no-questions">
+                    <h4>No questions were generated</h4>
+                    <p>Please adjust your distribution criteria to match available questions.</p>
+                  </div>
+                ) : (
+                  generatedPaper.questions.map((question, index) => (
+                    <div key={index} className="question-item">
+                      <p className="question-text">
+                        <strong>Q{index + 1}. </strong>
+                        {question.questionText}
+                        <span className="marks">[{question.marks} Marks]</span>
+                      </p>
+                      <div className="question-meta">
+                        <span>Unit: {question.unit}</span>
+                        <span>CO: {question.co}</span>
+                        <span>BL: {question.bl}</span>
+                        <span>Section: {question.section}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              {generatedPaper.distributionResults && generatedPaper.distributionResults.map((result, index) => (
-                <div key={index} className={`distribution-result ${result.found === 0 ? 'no-match' : 'match'}`}>
-                  <div className="criteria-details">
-                    <span className="criteria">{result.criteria}:</span>
-                    <span className="result">
-                      {result.found} of {result.requested} found
-                      {result.found > 0 && (
-                        <span className={`match-type ${result.exactMatch ? 'match-exact' : 'match-flexible'}`}>
-                          {result.exactMatch ? 'exact' : result.matchType}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  {result.found === 0 && (
-                    <div className="no-match-help">
-                      💡 Try adjusting marks or Bloom's level to match available questions
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              {generatedPaper.distributionResults && generatedPaper.distributionResults.some(r => !r.exactMatch && r.found > 0) && (
-                <div className="flexible-match-info">
-                  💡 <strong>Flexible matching:</strong> Some questions were matched using flexible criteria when exact matches weren't available.
-                </div>
-              )}
-            </div>
-
-            <div className="paper-header">
-              <h4>{generatedPaper.paperName}</h4>
-              <p><strong>Class:</strong> {generatedPaper.className} | <strong>Subject:</strong> {generatedPaper.subject} | <strong>Total Marks:</strong> {generatedPaper.totalMarks}</p>
-              {generatedPaper.message && (
-                <p className={`message ${generatedPaper.questions.length === 0 ? 'error-message' : 'success-message'}`}>
-                  {generatedPaper.message}
-                </p>
-              )}
-            </div>
-            
-            <div className="questions-list">
-              {generatedPaper.questions.length === 0 ? (
-                <div className="no-questions">
-                  <h4>❌ No Questions Generated</h4>
-                  <p>Detailed analysis:</p>
-                  <ul>
-                    <li>Your distribution criteria: {paperConfig.questionDistribution.map(d => `${d.count} questions of ${d.marks} marks (BL ${d.bl})`).join(', ')}</li>
-                    <li>Available questions: {availableQuestions.map(q => `${q.marks} marks (BL ${q.bl})`).join(', ')}</li>
-                    <li>Try using the "Quick Setup" or "Auto-Fill All" buttons to automatically match available questions</li>
-                    <li>Or manually adjust your distribution to match the available question types shown above</li>
-                  </ul>
-                </div>
-              ) : (
-                generatedPaper.questions.map((question, index) => (
-                  <div key={index} className="question-item">
-                    <p className="question-text">
-                      <strong>Q{index + 1}. </strong>
-                      {question.questionText}
-                      <span className="marks-badge">[{question.marks} Marks]</span>
-                    </p>
-                    <div className="question-meta">
-                      <span>Unit: {question.unit}</span>
-                      <span>CO: {question.co}</span>
-                      <span>BL: {question.bl}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {generatedPaper.questions.length > 0 && (
-              <div className="download-section">
-                <h4>Download Paper</h4>
-                <div className="download-buttons">
+              {generatedPaper.questions.length > 0 && (
+                <div className="download-section">
                   <button 
-                    onClick={() => downloadPaper('doc')} 
+                    onClick={() => downloadPaper('pdf')} 
                     className="btn btn-primary"
                     disabled={downloadLoading}
                   >
-                    {downloadLoading ? 'Downloading...' : 'Download as Word Document'}
+                    {downloadLoading ? 'Downloading...' : 'Download as PDF'}
                   </button>
                   <button 
                     onClick={() => downloadPaper('json')} 
-                    className="btn btn-info"
+                    className="btn btn-secondary"
                     disabled={downloadLoading}
+                    style={{ marginLeft: '10px' }}
                   >
                     {downloadLoading ? 'Downloading...' : 'Download as JSON'}
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </div>

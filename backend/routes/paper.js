@@ -8,7 +8,8 @@ router.post('/generate', auth, async (req, res) => {
   try {
     const { 
       paperName, 
-      className, 
+      department,
+      course,
       subject, 
       questionDistribution,
       units,
@@ -16,13 +17,19 @@ router.post('/generate', auth, async (req, res) => {
     } = req.body;
 
     console.log('=== PAPER GENERATION STARTED ===');
-    console.log('Paper details:', { paperName, className, subject });
+    console.log('Paper details:', { paperName, department, course, subject });
     console.log('Question distribution:', JSON.stringify(questionDistribution, null, 2));
 
-    let filter = { subject, class: className };
+    // Build filter based on available fields
+    let filter = {};
     
-    if (units && units.length > 0) filter.unit = { $in: units };
+    if (subject) filter.subject = new RegExp(subject, 'i');
+    if (department) filter.department = new RegExp(department, 'i');
+    if (course) filter.course = new RegExp(course, 'i');
+    if (units && units.length > 0) filter.unit = { $in: units.map(u => parseInt(u)) };
     if (cos && cos.length > 0) filter.co = { $in: cos };
+
+    console.log('Database filter:', filter);
 
     // Get all questions matching filters
     const allQuestions = await Question.find(filter);
@@ -41,7 +48,8 @@ router.post('/generate', auth, async (req, res) => {
     if (allQuestions.length === 0) {
       return res.json({
         paperName,
-        className,
+        department,
+        course,
         subject,
         totalMarks: 0,
         questions: [],
@@ -59,9 +67,9 @@ router.post('/generate', auth, async (req, res) => {
 
     // Process question distribution
     for (const dist of questionDistribution) {
-      const { marks, count, bl } = dist;
+      const { marks, count, bl, section } = dist;
       
-      console.log(`\nProcessing distribution: ${count} questions of ${marks} marks (BL ${bl})`);
+      console.log(`\nProcessing distribution: ${count} questions of ${marks} marks (BL ${bl}) in ${section}`);
       
       // Convert to numbers for comparison
       const targetMarks = parseInt(marks);
@@ -116,8 +124,13 @@ router.post('/generate', auth, async (req, res) => {
         const shuffled = [...matchingQuestions].sort(() => 0.5 - Math.random());
         selected = shuffled.slice(0, Math.min(targetCount, matchingQuestions.length));
         
+        // Add section information to selected questions
         selected.forEach(q => {
-          selectedQuestions.push(q);
+          const questionWithSection = {
+            ...q.toObject(),
+            section: section || 'Part-A'
+          };
+          selectedQuestions.push(questionWithSection);
           usedQuestionIds.add(q._id.toString());
         });
 
@@ -125,7 +138,7 @@ router.post('/generate', auth, async (req, res) => {
       }
 
       distributionResults.push({
-        criteria: `${count} questions of ${marks} marks (BL ${bl})`,
+        criteria: `${count} questions of ${marks} marks (BL ${bl}) in ${section}`,
         requested: targetCount,
         found: selected.length,
         questions: selected,
@@ -157,7 +170,8 @@ router.post('/generate', auth, async (req, res) => {
 
     res.json({
       paperName,
-      className,
+      department,
+      course,
       subject,
       totalMarks: calculatedTotalMarks,
       questions: selectedQuestions,
@@ -200,6 +214,9 @@ router.post('/download-word', auth, async (req, res) => {
             border-bottom: 2px solid #000;
             padding-bottom: 20px;
           }
+          .college-info {
+            margin-bottom: 10px;
+          }
           .question { 
             margin-bottom: 20px; 
             page-break-inside: avoid;
@@ -231,20 +248,32 @@ router.post('/download-word', auth, async (req, res) => {
             font-weight: bold;
             margin-right: 8px;
           }
+          .section {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            border-bottom: 1px solid #000;
+            padding-bottom: 5px;
+          }
         </style>
       </head>
       <body>
         <div class="header">
+          <div class="college-info">
+            <h2>${paperData.collegeName || 'CHAITANYA BHARATHI INSTITUTE OF TECHNOLOGY (Autonomous)'}</h2>
+            <h3>${paperData.program || 'B.E. & B.Tech.'}</h3>
+          </div>
           <h1>${paperData.paperName || 'QUESTION PAPER'}</h1>
-          <h2>${paperData.className || ''}</h2>
           <h3>${paperData.subject || ''}</h3>
-          <h4>Time: 3 Hours &nbsp;&nbsp;&nbsp; Maximum Marks: ${paperData.totalMarks || 'N/A'}</h4>
+          <h4>Semester: ${paperData.semester || ''} | ${paperData.examinationType || 'Main/Backlog'} | ${paperData.monthYear || 'April 2025'}</h4>
+          <h4>Time: ${paperData.time || '3 Hours'} &nbsp;&nbsp;&nbsp; Maximum Marks: ${paperData.totalMarks || 'N/A'}</h4>
+          <p><strong>Common To:</strong> ${paperData.commonTo || 'All Branches'}</p>
         </div>
         
         <div class="instructions">
           <strong>Instructions:</strong>
           <ol>
-            <li>Attempt all questions</li>
+            <li>${paperData.note || 'Answer ALL questions from Part-A & Part-B (Internal Choice) at one place in the same order'}</li>
             <li>Figures to the right indicate full marks</li>
             <li>Assume suitable data if necessary</li>
             <li>Mobile phones and other electronic gadgets are not permitted</li>
@@ -252,19 +281,32 @@ router.post('/download-word', auth, async (req, res) => {
         </div>
     `;
 
+    // Group questions by section
+    const questionsBySection = {};
     paperData.questions.forEach((question, index) => {
-      htmlContent += `
-        <div class="question">
-          <div class="question-text">
-            <span class="question-number">Q${index + 1}.</span>
-            ${question.questionText}
-            <strong>[${question.marks} Marks]</strong>
+      const section = question.section || 'Part-A';
+      if (!questionsBySection[section]) questionsBySection[section] = [];
+      questionsBySection[section].push({ ...question, index });
+    });
+
+    // Add questions by section
+    Object.entries(questionsBySection).forEach(([section, questions]) => {
+      htmlContent += `<div class="section">${section}</div>`;
+      
+      questions.forEach((question) => {
+        htmlContent += `
+          <div class="question">
+            <div class="question-text">
+              <span class="question-number">Q${question.index + 1}.</span>
+              ${question.questionText}
+              <strong>[${question.marks} Marks]</strong>
+            </div>
+            <div class="meta">
+              Unit: ${question.unit} | CO: ${question.co} | Bloom's Level: ${question.bl}
+            </div>
           </div>
-          <div class="meta">
-            Unit: ${question.unit} | CO: ${question.co} | Bloom's Level: ${question.bl}
-          </div>
-        </div>
-      `;
+        `;
+      });
     });
 
     htmlContent += `
