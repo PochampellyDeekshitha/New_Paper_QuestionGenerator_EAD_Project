@@ -26,7 +26,8 @@ const Login = () => {
 
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const response = await axios.post(`http://localhost:5000${endpoint}`, formData);
+      const response = await axios.post(`https://question-paper-generator-gdt0.onrender.com${endpoint}`, formData);
+
       
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
