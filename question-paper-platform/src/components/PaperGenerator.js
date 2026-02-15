@@ -52,7 +52,7 @@ const PaperGenerator = () => {
     const { name, value } = e.target;
     setPaperConfig(prev => ({
       ...prev,
-      [name]: value
+      [name]: name === "totalMarks" ? Number(value) : value
     }));
   };
 
@@ -130,33 +130,43 @@ const PaperGenerator = () => {
     }));
   };
 
-  const validateDistribution = () => {
-    if (!paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0) {
-      alert('Please add at least one question distribution');
+const validateDistribution = () => {
+  if (!paperConfig.questionDistribution || paperConfig.questionDistribution.length === 0) {
+    alert('Please add at least one question distribution');
+    return false;
+  }
+
+  let totalConfiguredMarks = 0;
+
+  for (const dist of paperConfig.questionDistribution) {
+    const marks = Number(dist.marks);
+    const count = Number(dist.count);
+
+    if (!marks || !count || !dist.bl || !dist.section) {
+      alert('Please fill all fields in question distribution');
       return false;
     }
 
-    let totalConfiguredMarks = 0;
-    for (const dist of paperConfig.questionDistribution) {
-      if (!dist.marks || !dist.count || !dist.bl || !dist.section) {
-        alert('Please fill all fields in question distribution');
-        return false;
-      }
-      if (dist.marks <= 0 || dist.count <= 0) {
-        alert('Marks and count must be positive numbers');
-        return false;
-      }
-      totalConfiguredMarks += dist.marks * dist.count;
-    }
-
-    // Check if configured marks match total marks
-    if (totalConfiguredMarks !== paperConfig.totalMarks) {
-      alert(`Configured marks (${totalConfiguredMarks}) do not match total marks (${paperConfig.totalMarks}). Please adjust your distribution.`);
+    if (marks <= 0 || count <= 0) {
+      alert('Marks and count must be positive numbers');
       return false;
     }
 
-    return true;
-  };
+    totalConfiguredMarks += marks * count;
+  }
+
+  const totalMarks = Number(paperConfig.totalMarks);
+
+  if (totalConfiguredMarks !== totalMarks) {
+    alert(
+      `Configured marks (${totalConfiguredMarks}) do not match total marks (${totalMarks}). Please adjust your distribution.`
+    );
+    return false;
+  }
+
+  return true;
+};
+
 
   const setupQuickDistribution = () => {
     if (Object.keys(availableCombinations).length === 0) {
@@ -251,10 +261,10 @@ const PaperGenerator = () => {
         
         // Filter available questions that match the criteria and haven't been used
         const matchingQuestions = availableQuestions.filter(q => 
-          q.marks === marks && 
-          q.bl === bl &&
-          !usedQuestionIds.has(q._id)
-        ).slice(0, count);
+  Number(q.marks) === Number(marks) && 
+  Number(q.bl) === Number(bl) &&
+  !usedQuestionIds.has(q._id)
+).slice(0, count);
 
         // If not enough matching questions, show warning but continue
         if (matchingQuestions.length < count) {
@@ -267,7 +277,7 @@ const PaperGenerator = () => {
             section: section
           });
           usedQuestionIds.add(question._id);
-          totalMarks += question.marks;
+          totalMarks += Number(question.marks);
         });
       }
 
@@ -297,153 +307,127 @@ const PaperGenerator = () => {
     }
   };
 
-  const downloadPDF = () => {
-    if (!generatedPaper) {
-      alert('No paper generated to download');
-      return;
+const downloadPDF = () => {
+  if (!generatedPaper || generatedPaper.questions.length === 0) {
+    alert("Generate paper first");
+    return;
+  }
+
+  setDownloadLoading(true);
+
+  try {
+    const pdf = new jsPDF();
+    let y = 15;
+
+    // ===== COLLEGE NAME =====
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(14);
+    pdf.text(paperConfig.collegeName, 105, y, { align: "center" });
+    y += 10;
+
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+
+    // ===== TOP DETAILS (2 COLUMN STYLE) =====
+    pdf.text(`Program: ${paperConfig.program}`, 15, y);
+    pdf.text(`Semester: ${paperConfig.semester}`, 140, y);
+    y += 7;
+
+    pdf.text(`Examination: ${paperConfig.examinationType}`, 15, y);
+    pdf.text(`Month & Year: ${paperConfig.monthYear}`, 140, y);
+    y += 7;
+
+    pdf.text(`Time: ${paperConfig.time}`, 15, y);
+    pdf.text(`Common To: ${paperConfig.commonTo}`, 140, y);
+    y += 7;
+
+    pdf.text(`Subject: ${generatedPaper.subject}`, 15, y);
+    pdf.text(`Department: ${generatedPaper.department}`, 140, y);
+    y += 7;
+
+    pdf.text(`Total Marks: ${generatedPaper.totalMarks}`, 15, y);
+    y += 10;
+
+    // ===== PAPER TITLE =====
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`Paper: ${generatedPaper.paperName}`, 105, y, { align: "center" });
+    y += 8;
+
+    // ===== NOTE =====
+    pdf.setFont("helvetica", "italic");
+    const noteLines = pdf.splitTextToSize(`Note: ${paperConfig.note}`, 180);
+    pdf.text(noteLines, 15, y);
+    y += noteLines.length * 6 + 5;
+
+    pdf.setFont("helvetica", "normal");
+
+    // ===== PART A =====
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PART - A", 15, y);
+    y += 8;
+    pdf.setFont("helvetica", "normal");
+
+    const partA = generatedPaper.questions.filter(q => q.section === "Part-A");
+
+    partA.forEach((q, index) => {
+      const text = `Q${index + 1}. ${q.questionText} [${q.marks} Marks]`;
+      const lines = pdf.splitTextToSize(text, 180);
+
+      if (y + lines.length * 6 > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+
+      pdf.text(lines, 15, y);
+      y += lines.length * 6 + 4;
+    });
+
+    // ===== PART B =====
+    if (y > 250) {
+      pdf.addPage();
+      y = 20;
+    } else {
+      y += 5;
     }
 
-    if (generatedPaper.questions.length === 0) {
-      alert('Cannot download empty paper. Please generate a paper with questions first.');
-      return;
+    pdf.setFont("helvetica", "bold");
+    pdf.text("PART - B", 15, y);
+    y += 8;
+    pdf.setFont("helvetica", "normal");
+
+    const partB = generatedPaper.questions.filter(q => q.section === "Part-B");
+
+    partB.forEach((q, index) => {
+      const text = `Q${partA.length + index + 1}. ${q.questionText} [${q.marks} Marks]`;
+      const lines = pdf.splitTextToSize(text, 180);
+
+      if (y + lines.length * 6 > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+
+      pdf.text(lines, 15, y);
+      y += lines.length * 6 + 4;
+    });
+
+    // ===== END LINE =====
+    if (y > 260) {
+      pdf.addPage();
+      y = 20;
     }
 
-    setDownloadLoading(true);
-    try {
-      // Create new PDF document
-      const pdf = new jsPDF();
-      
-      // Set initial y position
-      let yPosition = 20;
-      
-      // Add college name (centered)
-      pdf.setFontSize(16);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(paperConfig.collegeName, 105, yPosition, { align: 'center' });
-      yPosition += 10;
-      
-      // Add program and semester
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Program: ${paperConfig.program}`, 20, yPosition);
-      pdf.text(`Semester: ${paperConfig.semester}`, 150, yPosition);
-      yPosition += 8;
-      
-      // Add examination details
-      pdf.text(`Examination: ${paperConfig.examinationType}`, 20, yPosition);
-      pdf.text(`Month & Year: ${paperConfig.monthYear}`, 150, yPosition);
-      yPosition += 8;
-      
-      // Add time and common to
-      pdf.text(`Time: ${paperConfig.time}`, 20, yPosition);
-      pdf.text(`Common To: ${paperConfig.commonTo}`, 150, yPosition);
-      yPosition += 15;
-      
-      // Add paper name
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(`Paper: ${generatedPaper.paperName}`, 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      
-      // Add subject and department
-      pdf.setFontSize(12);
-      pdf.setFont('helvetica', 'normal');
-      pdf.text(`Subject: ${generatedPaper.subject}`, 20, yPosition);
-      pdf.text(`Department: ${generatedPaper.department}`, 150, yPosition);
-      yPosition += 8;
-      
-      // Add total marks
-      pdf.text(`Total Marks: ${generatedPaper.totalMarks}`, 20, yPosition);
-      yPosition += 15;
-      
-      // Add note
-      pdf.setFont('helvetica', 'italic');
-      pdf.text(`Note: ${paperConfig.note}`, 20, yPosition);
-      yPosition += 15;
-      
-      // Add Part A heading
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('PART - A', 20, yPosition);
-      yPosition += 10;
-      
-      // Add Part A questions
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      
-      const partAQuestions = generatedPaper.questions.filter(q => q.section === 'Part-A');
-      partAQuestions.forEach((question, index) => {
-        const questionText = `Q${index + 1}. ${question.questionText} [${question.marks} Marks]`;
-        
-        // Split long questions into multiple lines
-        const splitText = pdf.splitTextToSize(questionText, 170);
-        
-        // Check if we need a new page
-        if (yPosition + (splitText.length * 7) > 270) {
-          pdf.addPage();
-          yPosition = 20;
-        }
-        
-        pdf.text(splitText, 20, yPosition);
-        yPosition += (splitText.length * 7) + 3;
-      });
-      
-      // Add Part B heading
-      if (yPosition > 250) {
-        pdf.addPage();
-        yPosition = 20;
-      } else {
-        yPosition += 10;
-      }
-      
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text('PART - B', 20, yPosition);
-      yPosition += 10;
-      
-      // Add Part B questions
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'normal');
-      
-      const partBQuestions = generatedPaper.questions.filter(q => q.section === 'Part-B');
-      partBQuestions.forEach((question, index) => {
-        const questionText = `Q${partAQuestions.length + index + 1}. ${question.questionText} [${question.marks} Marks]`;
-        
-        // Split long questions into multiple lines
-        const splitText = pdf.splitTextToSize(questionText, 170);
-        
-        // Check if we need a new page
-        if (yPosition + (splitText.length * 7) > 270) {
-          pdf.addPage();
-          yPosition = 20;
-        }
-        
-        pdf.text(splitText, 20, yPosition);
-        yPosition += (splitText.length * 7) + 3;
-      });
-      
-      // Add end of paper
-      if (yPosition > 250) {
-        pdf.addPage();
-        yPosition = 20;
-      } else {
-        yPosition += 10;
-      }
-      
-      pdf.setFont('helvetica', 'italic');
-      pdf.text('--- End of Question Paper ---', 105, yPosition, { align: 'center' });
-      
-      // Save the PDF
-      pdf.save(`${generatedPaper.paperName.replace(/\s+/g, '_')}.pdf`);
-      
-      alert('Paper downloaded successfully as PDF');
-    } catch (error) {
-      console.error('PDF download error:', error);
-      alert('Error downloading PDF: ' + (error.message || 'Unknown error'));
-    } finally {
-      setDownloadLoading(false);
-    }
-  };
+    pdf.setFont("helvetica", "italic");
+    pdf.text("--- End of Question Paper ---", 105, y, { align: "center" });
+
+    pdf.save(`${generatedPaper.paperName.replace(/\s+/g, "_")}.pdf`);
+
+  } catch (error) {
+    alert("Error generating PDF");
+  }
+
+  setDownloadLoading(false);
+};
+
 
   const downloadPaper = async (format) => {
     if (!generatedPaper) {

@@ -41,7 +41,7 @@ const Dashboard = () => {
       <nav className="navbar">
         <div className="nav-brand">Question Paper Platform</div>
         <div className="nav-items">
-          <span>Welcome, {user.name}</span>
+          <span style={{ whiteSpace: "nowrap" }}>Welcome, {user.name}</span>
           <button onClick={handleLogout} className="btn btn-primary">Logout</button>
         </div>
       </nav>
