@@ -271,14 +271,15 @@ const validateDistribution = () => {
           console.warn(`Not enough questions for ${marks} marks BL ${bl}. Requested: ${count}, Found: ${matchingQuestions.length}`);
         }
 
-        matchingQuestions.forEach(question => {
-          generatedQuestions.push({
-            ...question,
-            section: section
-          });
-          usedQuestionIds.add(question._id);
-          totalMarks += Number(question.marks);
-        });
+// eslint-disable-next-line no-loop-func
+matchingQuestions.forEach(question => {
+  generatedQuestions.push({
+    ...question,
+    section: section
+  });
+  usedQuestionIds.add(question._id);
+  totalMarks += Number(question.marks);
+});
       }
 
       const generatedPaperData = {
