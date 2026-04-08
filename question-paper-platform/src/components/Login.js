@@ -24,9 +24,18 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const response = await axios.post(`https://question-paper-generator-gdt0.onrender.com${endpoint}`, formData);
+try {
+  const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
+
+  console.log("Sending request to:", `http://localhost:5000${endpoint}`);
+  console.log("Data:", formData);
+
+  const response = await axios.post(
+    `http://localhost:5000${endpoint}`,
+    formData
+  );
+
+  console.log("Response:", response.data);
 
       
       localStorage.setItem('token', response.data.token);
