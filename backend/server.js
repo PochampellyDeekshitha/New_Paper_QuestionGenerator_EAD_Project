@@ -10,6 +10,12 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+
+// Root route (IMPORTANT for AWS check)
+app.get("/", (req, res) => {
+  res.send("Backend working 🚀");
+});
+
 // Database connection
 mongoose.connect(
   process.env.MONGODB_URI || "mongodb://localhost:27017/question_paper_platform"
@@ -20,6 +26,7 @@ mongoose.connect(
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/questions', require('./routes/questions'));
 app.use('/api/paper', require('./routes/paper'));
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
