@@ -27,11 +27,11 @@ const Login = () => {
 try {
   const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
 
-  console.log("Sending request to:", `http://localhost:5000${endpoint}`);
+  console.log("Sending request to:", `${process.env.REACT_APP_API_URL}${endpoint}`);
   console.log("Data:", formData);
 
   const response = await axios.post(
-    `http://localhost:5000${endpoint}`,
+    `${process.env.REACT_APP_API_URL}${endpoint}`,
     formData
   );
 
